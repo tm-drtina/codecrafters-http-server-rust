@@ -1,6 +1,6 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use nom::InputIter;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::net::tcp::ReadHalf;
 
 use crate::headers::Headers;
@@ -78,11 +78,26 @@ impl<'a> TcpHttpReader<'a> {
             headers.insert(key.to_vec(), value.to_vec());
         }
 
+        let data = if let Some(data_len) = headers.get(&b"Content-Length".to_vec()) {
+            let data_len = std::str::from_utf8(data_len)
+                .context("Content-Length header valus is not valid utf-8 string")?
+                .parse::<usize>()
+                .context("Content-Length header is not a valid number")?;
+
+            let mut buf = Vec::with_capacity(data_len);
+            buf.resize(data_len, 0);
+            self.reader.read_exact(&mut buf[..data_len]).await?;
+            Some(buf.into_boxed_slice())
+        } else {
+            None
+        };
+
         Ok(Request {
             method,
             target,
             http_version,
             headers,
+            data,
         })
     }
 }

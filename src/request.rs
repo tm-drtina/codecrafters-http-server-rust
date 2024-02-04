@@ -6,4 +6,5 @@ pub struct Request {
     pub target: Vec<u8>,
     pub http_version: Vec<u8>,
     pub headers: Headers,
+    pub data: Option<Box<[u8]>>,
 }

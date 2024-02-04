@@ -1,8 +1,10 @@
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 use crate::request::Request;
 use crate::response::{Response, ResponseMeta};
+use crate::status::Status;
 use crate::Config;
 
 pub async fn create_response(request: Request, config: &Config) -> anyhow::Result<Response> {
@@ -30,6 +32,17 @@ pub async fn create_response(request: Request, config: &Config) -> anyhow::Resul
                 } else {
                     ResponseMeta::not_found(request).empty()
                 }
+            }
+            (b"POST", target) if target.starts_with(b"/files/") => {
+                let filename = std::str::from_utf8(target.strip_prefix(b"/files/").unwrap()).context("Cannot parse filename to string")?;
+                let path = config.directory.join(filename);
+                let mut file = File::create(path).await.context("Cannot create file")?;
+                if let Some(data) = &request.data {
+                    file.write_all(data).await?;
+                } else {
+                    bail!("No data sent!");
+                }
+                ResponseMeta::from_req(request, Status::Created).empty()
             }
             (_, _) => ResponseMeta::not_found(request).empty(),
         },
