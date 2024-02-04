@@ -1,18 +1,21 @@
-use std::io::Write;
-use std::net::TcpListener;
+use tokio::net::TcpListener;
 
-fn main() {
-    let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+use http_server_starter_rust::process_stream;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:4221").await?;
     
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
-                println!("accepted new connection");
-                stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").expect("Sending empty response");
+    loop {
+        match listener.accept().await {
+            Ok((stream, addr)) => {
+                eprintln!("new client: {:?}", addr);
+                match process_stream(stream).await {
+                    Ok(_) => {},
+                    Err(err) => eprintln!("Proseccing of stream failed: {}", err),
+                };
             }
-            Err(e) => {
-                println!("error: {}", e);
-            }
+            Err(e) => eprintln!("couldn't get client: {:?}", e),
         }
     }
 }
