@@ -1,7 +1,7 @@
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::WriteHalf;
 
-use crate::response::Response;
+use crate::response::ResponseWithData;
 
 pub struct TcpHttpWriter<'a> {
     writer: WriteHalf<'a>,
@@ -12,12 +12,13 @@ impl<'a> TcpHttpWriter<'a> {
         Self { writer }
     }
 
-    pub async fn write_response(&mut self, response: &Response) -> anyhow::Result<()> {
+    pub async fn write_response(&mut self, response: &ResponseWithData) -> anyhow::Result<()> {
         // Response line
         self.writer.write_all(&response.status.http_version).await?;
         self.writer.write_u8(b' ').await?;
         self.writer
-            .write_all(format!("{}", response.status.status_code).as_bytes()).await?;
+            .write_all(format!("{}", response.status.status_code).as_bytes())
+            .await?;
         self.writer.write_u8(b' ').await?;
         self.writer.write_all(&response.status.status_text).await?;
         self.writer.write_u8(b'\r').await?;
@@ -36,6 +37,9 @@ impl<'a> TcpHttpWriter<'a> {
         self.writer.write_u8(b'\n').await?;
 
         // Data if needed
+        if let Some(data) = &response.data {
+            self.writer.write_all(data).await?;
+        }
 
         Ok(())
     }
