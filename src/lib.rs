@@ -18,7 +18,7 @@ pub async fn process_stream(mut stream: TcpStream) -> anyhow::Result<()> {
 
     // loop {
     let request = reader.read_request().await?;
-    let response = create_response(request);
+    let response = create_response(request)?;
     writer.write_response(&response).await?;
     // }
     

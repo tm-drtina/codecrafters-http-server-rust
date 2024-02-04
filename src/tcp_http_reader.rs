@@ -72,7 +72,10 @@ impl<'a> TcpHttpReader<'a> {
             }
             let line = self.buf.as_slice();
             let (key, value) = line.split_at(line.position(|ch| ch == b':').ok_or(anyhow!("Invalid header format"))?);
-            // value (and key?) should be trimmed of whitespaces
+            let mut value = &value[1..];
+            while value.starts_with(b" ") {
+                value = &value[1..];
+            }
             headers.insert(key.to_vec(), value.to_vec());
         }
 
