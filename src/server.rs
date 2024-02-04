@@ -1,57 +1,37 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
+use tokio::fs::File;
 
-use crate::headers::Headers;
 use crate::request::Request;
-use crate::response::{Response, ResponseWithData, StatusLine};
+use crate::response::{Response, ResponseMeta};
+use crate::Config;
 
-pub fn create_response(request: Request) -> anyhow::Result<ResponseWithData> {
+pub async fn create_response(request: Request, config: &Config) -> anyhow::Result<Response> {
     Ok(
-        match (
-            request.request_line.method.as_slice(),
-            request.request_line.target.as_slice(),
-        ) {
-            (b"GET", b"/") => Response {
-                status: StatusLine {
-                    http_version: request.request_line.http_version,
-                    status_code: 200,
-                    status_text: b"OK".to_vec(),
-                },
-                headers: Headers::new(),
-            }
-            .empty(),
-            (b"GET", b"/user-agent") => Response {
-                status: StatusLine {
-                    http_version: request.request_line.http_version,
-                    status_code: 200,
-                    status_text: b"OK".to_vec(),
-                },
-                headers: Headers::new(),
-            }
-            .plain(
-                request
+        match (request.method.as_slice(), request.target.as_slice()) {
+            (b"GET", b"/") => ResponseMeta::ok(request).empty(),
+            (b"GET", b"/user-agent") => {
+                let data = request
                     .headers
                     .get(&b"User-Agent".to_vec())
                     .ok_or(anyhow!("User-Agent header not set!"))?
-                    .clone(),
-            ),
-            (b"GET", target) if target.starts_with(b"/echo/") => Response {
-                status: StatusLine {
-                    http_version: request.request_line.http_version,
-                    status_code: 200,
-                    status_text: b"OK".to_vec(),
-                },
-                headers: Headers::new(),
+                    .clone();
+                ResponseMeta::ok(request).plain(data)
             }
-            .plain(target.strip_prefix(b"/echo/").unwrap().to_vec()),
-            (_, _) => Response {
-                status: StatusLine {
-                    http_version: request.request_line.http_version,
-                    status_code: 404,
-                    status_text: b"Not Found".to_vec(),
-                },
-                headers: Headers::new(),
+            (b"GET", target) if target.starts_with(b"/echo/") => {
+                let data = target.strip_prefix(b"/echo/").unwrap().to_vec();
+                ResponseMeta::ok(request).plain(data)
             }
-            .empty(),
+            (b"GET", target) if target.starts_with(b"/files/") => {
+                let filename = std::str::from_utf8(target.strip_prefix(b"/files/").unwrap()).context("Cannot parse filename to string")?;
+                let path = config.directory.join(filename);
+                if path.exists() {
+                    let file = File::open(path).await.context("Cannot open file")?;
+                    ResponseMeta::ok(request).file(file).await?
+                } else {
+                    ResponseMeta::not_found(request).empty()
+                }
+            }
+            (_, _) => ResponseMeta::not_found(request).empty(),
         },
     )
 }

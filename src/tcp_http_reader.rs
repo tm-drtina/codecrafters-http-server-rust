@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::tcp::ReadHalf;
 
 use crate::headers::Headers;
-use crate::request::{Request, RequestLine};
+use crate::request::Request;
 
 pub struct TcpHttpReader<'a> {
     reader: BufReader<ReadHalf<'a>>,
@@ -39,29 +39,25 @@ impl<'a> TcpHttpReader<'a> {
     }
 
     pub async fn read_request(&mut self) -> anyhow::Result<Request> {
-        let request_line = {
-            self.buf.clear();
-            self.read_until_crlf().await?;
-            let line = self.buf.as_slice();
+        self.buf.clear();
+        self.read_until_crlf().await?;
+        let line = self.buf.as_slice();
 
-            let (method, line) = line.split_at(
-                line.position(|ch| ch == b' ')
-                    .ok_or(anyhow!("Cannot extract method from request line."))?,
-            );
-            let line = &line[1..];
-            let (target, http_version) = line.split_at(line.position(|ch| ch == b' ').ok_or(
-                anyhow!("Cannot request target and HTTP version from request line."),
-            )?);
-            let http_version = &http_version[1..];
+        let (method, line) = line.split_at(
+            line.position(|ch| ch == b' ')
+                .ok_or(anyhow!("Cannot extract method from request line."))?,
+        );
+        let line = &line[1..];
+        let (target, http_version) = line.split_at(line.position(|ch| ch == b' ').ok_or(
+            anyhow!("Cannot request target and HTTP version from request line."),
+        )?);
+        let http_version = &http_version[1..];
 
-            debug_assert_eq!(http_version, b"HTTP/1.1");
+        debug_assert_eq!(http_version, b"HTTP/1.1");
 
-            RequestLine {
-                method: method.to_vec(),
-                target: target.to_vec(),
-                http_version: http_version.to_vec(),
-            }
-        };
+        let method = method.to_vec();
+        let target = target.to_vec();
+        let http_version = http_version.to_vec();
 
         let mut headers = Headers::new();
         loop {
@@ -71,7 +67,10 @@ impl<'a> TcpHttpReader<'a> {
                 break;
             }
             let line = self.buf.as_slice();
-            let (key, value) = line.split_at(line.position(|ch| ch == b':').ok_or(anyhow!("Invalid header format"))?);
+            let (key, value) = line.split_at(
+                line.position(|ch| ch == b':')
+                    .ok_or(anyhow!("Invalid header format"))?,
+            );
             let mut value = &value[1..];
             while value.starts_with(b" ") {
                 value = &value[1..];
@@ -80,7 +79,9 @@ impl<'a> TcpHttpReader<'a> {
         }
 
         Ok(Request {
-            request_line,
+            method,
+            target,
+            http_version,
             headers,
         })
     }
