@@ -9,11 +9,13 @@ async fn main() -> anyhow::Result<()> {
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
-                eprintln!("new client: {:?}", addr);
-                match process_stream(stream).await {
-                    Ok(_) => {},
-                    Err(err) => eprintln!("Proseccing of stream failed: {}", err),
-                };
+                tokio::spawn(async move {
+                    eprintln!("new client: {:?}", addr);
+                    match process_stream(stream).await {
+                        Ok(_) => {},
+                        Err(err) => eprintln!("Processing of stream failed: {}", err),
+                    };
+                });
             }
             Err(e) => eprintln!("couldn't get client: {:?}", e),
         }
